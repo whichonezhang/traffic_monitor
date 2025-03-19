@@ -105,8 +105,7 @@ func (a *TimeSeriesAnalyzer) Forecast(steps int) ([]float64, error) {
 	forecast := make([]float64, steps)
 	lastValue := values[len(values)-1]
 	lastDiff := values[len(values)-1] - values[len(values)-2]
-	phi := 0.7   // AR coefficient
-	theta := 0.3 // MA coefficient
+	phi := 0.7 // AR coefficient
 
 	for i := 0; i < steps; i++ {
 		// ARIMA(1,1,1) formula
