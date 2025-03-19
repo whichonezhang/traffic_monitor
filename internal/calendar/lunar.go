@@ -3,8 +3,6 @@ package calendar
 import (
 	"fmt"
 	"time"
-
-	"github.com/6tail/lunar-go"
 )
 
 // LunarCalendar handles lunar calendar related operations
@@ -43,14 +41,8 @@ func (c *LunarCalendar) GetPreviousFestivalDate(currentDate time.Time, festival 
 		return time.Time{}, fmt.Errorf("festival %s not found", festival)
 	}
 
-	// Convert to lunar date
-	lunarDate := lunar.NewLunarFromDate(festivalDate)
-
-	// Get the previous year's lunar date
-	prevLunarDate := lunar.NewLunar(lunarDate.GetYear()-1, lunarDate.GetMonth(), lunarDate.GetDay(), lunarDate.GetHour(), lunarDate.GetMinute(), lunarDate.GetSecond())
-
-	// Convert back to solar date
-	return prevLunarDate.GetSolar().GetDate(), nil
+	// Simply subtract one year from the festival date
+	return festivalDate.AddDate(-1, 0, 0), nil
 }
 
 // GetNextFestival returns the next upcoming festival and its date
@@ -62,11 +54,7 @@ func (c *LunarCalendar) GetNextFestival(currentDate time.Time) (string, time.Tim
 	for festival, festivalDate := range c.festivalMap {
 		// If the festival date is in the past, get next year's date
 		if festivalDate.Before(currentDate) {
-			prevDate, err := c.GetPreviousFestivalDate(currentDate, festival)
-			if err != nil {
-				continue
-			}
-			festivalDate = prevDate.AddDate(1, 0, 0)
+			festivalDate = festivalDate.AddDate(1, 0, 0)
 		}
 
 		diff := festivalDate.Sub(currentDate)
