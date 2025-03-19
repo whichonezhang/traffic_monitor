@@ -44,13 +44,13 @@ func (p *FileProvider) GetData(module, idc string, date time.Time) ([]types.Traf
 		return nil, fmt.Errorf("failed to read CSV data: %w", err)
 	}
 
-	if len(records) < 2 { // Need at least header and one data row
+	if len(records) < 1 { // Need at least one data row
 		return nil, fmt.Errorf("invalid file format: insufficient data")
 	}
 
-	// Verify header
-	if len(records[0]) != 1442 { // module, idc, date, and 1440 minutes of data
-		return nil, fmt.Errorf("invalid file format: expected 1442 columns, got %d", len(records[0]))
+	// Verify record format
+	if len(records[0]) != 1443 { // module, idc, date, and 1440 minutes of data
+		return nil, fmt.Errorf("invalid file format: expected 1443 columns, got %d", len(records[0]))
 	}
 
 	// Verify module and idc match
@@ -58,39 +58,33 @@ func (p *FileProvider) GetData(module, idc string, date time.Time) ([]types.Traf
 		return nil, fmt.Errorf("module/idc mismatch: expected %s/%s, got %s/%s", module, idc, records[0][0], records[0][1])
 	}
 
-	// Parse date from header
+	// Parse date from record
 	headerDate, err := time.Parse("20060102", records[0][2])
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse date from header: %w", err)
+		return nil, fmt.Errorf("failed to parse date from record: %w", err)
 	}
 
-	// Verify date matches
-	if !headerDate.Equal(date) {
+	// Verify date matches (compare only year, month, day)
+	if headerDate.Year() != date.Year() || headerDate.Month() != date.Month() || headerDate.Day() != date.Day() {
 		return nil, fmt.Errorf("date mismatch: expected %s, got %s", date.Format("20060102"), headerDate.Format("20060102"))
 	}
 
-	// Process data rows
+	// Process data
 	var data []types.TrafficData
 	baseTime := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, time.Local)
 
-	for i, record := range records[1:] {
-		if len(record) != 1442 {
-			return nil, fmt.Errorf("invalid record format at line %d: expected 1442 columns, got %d", i+2, len(record))
+	// Skip module, idc, and date columns
+	for j := 3; j < len(records[0]); j++ {
+		requests, err := strconv.ParseFloat(records[0][j], 64)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse requests at column %d: %w", j+1, err)
 		}
 
-		// Skip module, idc, and date columns
-		for j := 3; j < len(record); j++ {
-			requests, err := strconv.ParseFloat(record[j], 64)
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse requests at line %d, column %d: %w", i+2, j+1, err)
-			}
-
-			timestamp := baseTime.Add(time.Duration(j-3) * time.Minute)
-			data = append(data, types.TrafficData{
-				Timestamp: timestamp,
-				Requests:  requests,
-			})
-		}
+		timestamp := baseTime.Add(time.Duration(j-3) * time.Minute)
+		data = append(data, types.TrafficData{
+			Timestamp: timestamp,
+			Requests:  requests,
+		})
 	}
 
 	return data, nil
@@ -109,25 +103,18 @@ func (p *FileProvider) SaveData(module, idc string, date time.Time, data []types
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
 
-	// Write header row with module, idc, and date
-	header := make([]string, 1442)
-	header[0] = module
-	header[1] = idc
-	header[2] = date.Format("20060102")
+	// Create data row
+	dataRow := make([]string, 1443)
+	dataRow[0] = module
+	dataRow[1] = idc
+	dataRow[2] = date.Format("20060102")
 
-	// Write data rows
 	// Group data by minute
 	minuteData := make(map[int]float64)
 	for _, d := range data {
 		minute := d.Timestamp.Hour()*60 + d.Timestamp.Minute()
 		minuteData[minute] = d.Requests
 	}
-
-	// Create data row
-	dataRow := make([]string, 1442)
-	dataRow[0] = module
-	dataRow[1] = idc
-	dataRow[2] = date.Format("20060102")
 
 	// Fill in the 1440 minutes of data
 	for i := 0; i < 1440; i++ {
@@ -138,10 +125,7 @@ func (p *FileProvider) SaveData(module, idc string, date time.Time, data []types
 		}
 	}
 
-	// Write rows
-	if err := writer.Write(header); err != nil {
-		return fmt.Errorf("failed to write header: %w", err)
-	}
+	// Write row
 	if err := writer.Write(dataRow); err != nil {
 		return fmt.Errorf("failed to write data row: %w", err)
 	}
